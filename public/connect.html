@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oracle Monitor — Connect</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-body">
+  <div class="login-container">
+    <h1>Oracle Bottleneck Monitor</h1>
+    <p class="subtitle">Connect to a database. Credentials are kept only for this browser session and never saved.</p>
+    <form id="connectForm">
+      <div class="form-group">
+        <label for="user">Username (schema)</label>
+        <input type="text" id="user" name="user" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label for="privilege">Connect as</label>
+        <select id="privilege" name="privilege">
+          <option value="NORMAL">Normal</option>
+          <option value="SYSDBA">SYSDBA</option>
+          <option value="SYSOPER">SYSOPER</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="connectString">Connection string</label>
+        <input type="text" id="connectString" name="connectString" required placeholder="host:1521/service_name">
+      </div>
+      <button type="submit" id="connectBtn">Connect</button>
+      <div id="error" class="error" style="display:none;"></div>
+    </form>
+  </div>
+  <script>
+    document.getElementById('connectForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorDiv = document.getElementById('error');
+      const btn = document.getElementById('connectBtn');
+      errorDiv.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+      try {
+        const res = await fetch('/api/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user: document.getElementById('user').value,
+            password: document.getElementById('password').value,
+            privilege: document.getElementById('privilege').value,
+            connectString: document.getElementById('connectString').value
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          window.location.href = '/';
+          return;
+        }
+        errorDiv.textContent = data.details ? `${data.error}: ${data.details}` : (data.error || 'Connection failed');
+        errorDiv.style.display = 'block';
+      } catch (err) {
+        errorDiv.textContent = 'Network error: ' + err.message;
+        errorDiv.style.display = 'block';
+      }
+      btn.disabled = false;
+      btn.textContent = 'Connect';
+    });
+  </script>
+</body>
+</html>

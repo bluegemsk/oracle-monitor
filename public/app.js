@@ -12,8 +12,26 @@ async function init() {
 
 async function loadDbs() {
   const res = await fetch('/api/dbs');
+  if (res.status === 401) { window.location.href = '/connect.html'; return; }
   const data = await res.json();
   const select = document.getElementById('dbSelect');
+
+  if (data.loginPage) {
+    // Single database connected with credentials entered on the connect page
+    currentDb = data.current;
+    select.style.display = 'none';
+    const label = document.getElementById('dbLabel');
+    label.textContent = data.privilege === 'NORMAL' ? data.current : `${data.current} (${data.privilege})`;
+    label.style.display = '';
+    const btn = document.getElementById('disconnectBtn');
+    btn.style.display = '';
+    btn.onclick = async () => {
+      await fetch('/api/disconnect', { method: 'POST' });
+      window.location.href = '/connect.html';
+    };
+    return;
+  }
+
   select.innerHTML = data.dbs.map(d => `<option value="${d}">${d}</option>`).join('');
   select.value = data.current;
   currentDb = data.current;
@@ -34,6 +52,7 @@ async function loadSection(section) {
 
   try {
     const res = await fetch(`/api/${section}?${dbParam()}`);
+    if (res.status === 401) { window.location.href = '/connect.html'; return; }
     const data = await res.json();
     if (!res.ok) {
       content.innerHTML = `<div class="error"><strong>Error:</strong> ${escapeHtml(data.error)}<br><small>${escapeHtml(data.details || '')}</small></div>`;

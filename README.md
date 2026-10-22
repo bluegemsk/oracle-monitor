@@ -13,7 +13,8 @@ Uses **node-oracledb in Thin mode** (no Oracle Client libraries required).
    cp src/config.example.js src/config.js
    ```
 
-   - Add one or more databases under `dbs[]`.
+   - Choose how database credentials are provided with `databaseLoginPage` (see below).
+   - For `databaseLoginPage: 'no'`, add one or more databases under `dbs[]`.
 
    `src/config.js` is git-ignored so your credentials never get committed.
 
@@ -28,6 +29,16 @@ npm start        # or: npm run dev (auto-restart on changes)
 
 4. Open http://localhost:3000.
 
+## Database credentials: `databaseLoginPage`
+
+| Value   | Behaviour |
+|---------|-----------|
+| `'yes'` | The first page asks for **username (schema)**, **password**, **connect as** (Normal / SYSDBA / SYSOPER) and **connection string** (e.g. `dbhost:1521/ORCLPDB1`). The credentials are verified by a test connection and kept **only in server memory** for the current browser session — never written to disk or to the config. They are forgotten when you click **Disconnect**, close the browser, stay idle for `sessionIdleMinutes` (default 30), or the server restarts. `dbs[]` is ignored. |
+| `'no'`  | Credentials are taken from `dbs[]` in `src/config.js`. A connection pool is created per database and you switch between them with the dropdown. |
+
+In login-page mode each browser session uses its own credentials, so different admins
+can monitor different databases at the same time.
+
 ## Project structure
 
 ```
@@ -37,7 +48,7 @@ oracle-monitor/
 │   ├── queries.js           # Monitoring SQL (sessions, locks, top SQL, waits, ASH…)
 │   ├── config.example.js    # Config template (committed)
 │   └── config.js            # Your local config (git-ignored)
-├── public/                  # Static frontend (dashboard)
+├── public/                  # Static frontend (dashboard + database connect page)
 ├── docs/
 │   └── Oracle_Bottleneck_Investigation_Guide.md
 ├── package.json
@@ -86,8 +97,9 @@ GRANT SELECT ON v_$active_session_history  TO monitor_user;
 
 ## Features
 
-- No login — open internal tool for the admin team
-- **Multi-database** support (dropdown switcher)
+- No application login — open internal tool for the admin team
+- Optional **database login page** (credentials per browser session, never saved) or credentials from config
+- **Multi-database** support (dropdown switcher, config mode)
 - Overview / Sessions / Locks / Top SQL / Waits / Resources / **ASH (30 min)**
 - Color highlighting for long waits and blockers
 - Click any **SQL_ID** → execution plan modal
@@ -107,7 +119,11 @@ GRANT SELECT ON v_$active_session_history  TO monitor_user;
 - The app has **no login**: anyone who can reach the port can view the dashboards
   and use the Kill Session button. Run it only on a trusted internal network
   (or bind it behind a firewall / VPN).
-- Change the default database passwords in `src/config.js` before real use.
+- Change the default database passwords in `src/config.js` before real use,
+  or use `databaseLoginPage: 'yes'` so no database password is stored at all.
+- In login-page mode the password is sent from the browser to the server; without
+  TLS it travels in clear text over the network — use HTTPS (e.g. a reverse proxy)
+  if the network is not fully trusted.
 - Give the monitoring database user the minimum privileges needed.
 - The Kill feature is powerful — use it carefully and only with trusted users.
 
