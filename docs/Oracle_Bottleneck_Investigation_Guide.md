@@ -5,7 +5,7 @@
 This guide contains the same queries used by the Oracle Bottleneck Monitor web application.  
 You can run them directly when you only have a remote PL/SQL terminal.
 
-**Required privileges:** `SELECT_CATALOG_ROLE` (or the individual `SELECT` grants on the `V_$` views).
+**Required privileges:** `SELECT_CATALOG_ROLE` (or the individual `SELECT` grants on the `V_$` views — see the README).
 
 ---
 
@@ -86,13 +86,14 @@ SELECT w.sid AS waiting_sid,
        SUBSTR(bq.sql_text, 1, 80) AS blocking_sql
 FROM   v$session w
 JOIN   v$session b ON b.sid = w.blocking_session
-LEFT   JOIN v$sql bq ON bq.sql_id = b.sql_id
+LEFT   JOIN v$sqlarea bq ON bq.sql_id = NVL(b.sql_id, b.prev_sql_id)
 WHERE  w.blocking_session IS NOT NULL
 ORDER  BY w.seconds_in_wait DESC;
 ```
 
 **What to look for / Hint:**  
 A single blocker with many waiters for a long time almost always means a missing `COMMIT` or a long-running transaction that should have finished.  
+`blocking_sql` shows the blocker's current SQL, or — if the blocker is idle — the last SQL it ran (often the uncommitted DML).  
 Contact the owner of the blocking session or (with care) kill it.
 
 ---
@@ -109,7 +110,7 @@ SELECT sql_id,
        ROUND(buffer_gets / NULLIF(executions, 0)) AS gets_per_exec,
        disk_reads,
        SUBSTR(sql_text, 1, 120) AS sql_text
-FROM   v$sql
+FROM   v$sqlarea
 WHERE  executions > 0
   AND  parsing_schema_name NOT IN ('SYS','SYSTEM','PUBLIC')
 ORDER  BY elapsed_time DESC
@@ -117,6 +118,7 @@ FETCH  FIRST 15 ROWS ONLY;
 ```
 
 **What to look for / Hint:**  
+- Figures are totals since each statement was loaded into the shared pool (`V$SQLAREA` = one row per `sql_id`).  
 - High `elapsed_sec` + high `disk_reads` → likely missing index or bad plan (full scans).  
 - High `gets_per_exec` (logical reads per execution) → inefficient SQL.  
 - Take the `sql_id` and run an explain plan (see end of this document).
@@ -139,6 +141,7 @@ FETCH  FIRST 10 ROWS ONLY;
 ```
 
 **What to look for / Hint:**  
+Figures are cumulative since instance startup — use Step 7 (ASH) for what is happening right now.  
 The top `wait_class` usually points to the main bottleneck:  
 - `User I/O` → disk / storage  
 - `Concurrency` → locks / latches  
@@ -155,7 +158,7 @@ The top `wait_class` usually points to the main bottleneck:
 SELECT
   ROUND((1 - (phy.value / NULLIF(gets.value + cons.value, 0))) * 100, 2) AS buffer_cache_hit_pct,
   (SELECT current_utilization FROM v$resource_limit WHERE resource_name = 'sessions') AS current_sessions,
-  (SELECT value FROM v$resource_limit WHERE resource_name = 'sessions') AS max_sessions
+  (SELECT TRIM(limit_value) FROM v$resource_limit WHERE resource_name = 'sessions') AS max_sessions
 FROM v$sysstat phy, v$sysstat gets, v$sysstat cons
 WHERE phy.name = 'physical reads'
   AND gets.name = 'db block gets'
@@ -172,24 +175,28 @@ A buffer cache hit ratio consistently below 90–95 % often means memory pressur
 **Purpose:** See which SQL was most active in the recent past (very useful after a short performance degradation).
 
 ```sql
-SELECT ash.sql_id,
-       COUNT(*) AS samples,
-       ROUND(COUNT(*) / 30, 1) AS approx_aas,
-       MAX(SUBSTR(st.sql_text, 1, 100)) AS sql_text,
-       MAX(ash.event) KEEP (DENSE_RANK LAST ORDER BY ash.sample_time) AS last_event
-FROM   v$active_session_history ash
-LEFT   JOIN v$sql st ON ash.sql_id = st.sql_id
-WHERE  ash.sample_time > SYSDATE - 30/1440
-  AND  ash.session_type = 'FOREGROUND'
-  AND  ash.sql_id IS NOT NULL
-GROUP  BY ash.sql_id
-ORDER  BY samples DESC
+SELECT a.sql_id,
+       a.samples,
+       ROUND(a.samples / 1800, 2) AS approx_aas,
+       (SELECT SUBSTR(st.sql_text, 1, 100) FROM v$sqlarea st WHERE st.sql_id = a.sql_id) AS sql_text,
+       a.last_event
+FROM  (SELECT sql_id,
+              COUNT(*) AS samples,
+              MAX(NVL(event, 'ON CPU')) KEEP (DENSE_RANK LAST ORDER BY sample_time) AS last_event
+       FROM   v$active_session_history
+       WHERE  sample_time > SYSTIMESTAMP - INTERVAL '30' MINUTE
+         AND  session_type = 'FOREGROUND'
+         AND  sql_id IS NOT NULL
+       GROUP  BY sql_id) a
+ORDER  BY a.samples DESC
 FETCH  FIRST 12 ROWS ONLY;
 ```
 
 **What to look for / Hint:**  
 High `samples` (or high `approx_aas`) = the SQL that contributed most to the load in the last 30 minutes.  
-`approx_aas` is a rough Average Active Sessions figure for that SQL.
+ASH samples active sessions once per second, so `samples` ≈ seconds of DB time and
+`approx_aas` = `samples / 1800` = average number of sessions actively running that SQL.  
+`last_event` = `ON CPU` means the session was on CPU (not waiting) in its latest sample.
 
 ---
 

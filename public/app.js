@@ -2,6 +2,8 @@ let currentSection = 'health';
 let currentDb = '';
 let chart = null;
 let refreshInterval = null;
+let refreshSeconds = 15;
+let loadSeq = 0; // only the latest loadSection() response is rendered
 
 async function init() {
   await loadDbs();
@@ -14,6 +16,7 @@ async function loadDbs() {
   const res = await fetch('/api/dbs');
   if (res.status === 401) { window.location.href = '/connect.html'; return; }
   const data = await res.json();
+  if (data.refreshSeconds > 0) refreshSeconds = data.refreshSeconds;
   const select = document.getElementById('dbSelect');
 
   if (data.loginPage) {
@@ -32,7 +35,7 @@ async function loadDbs() {
     return;
   }
 
-  select.innerHTML = data.dbs.map(d => `<option value="${d}">${d}</option>`).join('');
+  select.innerHTML = data.dbs.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
   select.value = data.current;
   currentDb = data.current;
   select.onchange = () => {
@@ -42,6 +45,7 @@ async function loadDbs() {
 }
 
 async function loadSection(section) {
+  const seq = ++loadSeq;
   const content = document.getElementById('content');
   const hint = document.getElementById('hint');
   const chartContainer = document.getElementById('chartContainer');
@@ -54,6 +58,7 @@ async function loadSection(section) {
     const res = await fetch(`/api/${section}?${dbParam()}`);
     if (res.status === 401) { window.location.href = '/connect.html'; return; }
     const data = await res.json();
+    if (seq !== loadSeq) return; // a newer request (tab switch / refresh) superseded this one
     if (!res.ok) {
       content.innerHTML = `<div class="error"><strong>Error:</strong> ${escapeHtml(data.error)}<br><small>${escapeHtml(data.details || '')}</small></div>`;
       return;
@@ -74,6 +79,7 @@ async function loadSection(section) {
       renderChart(data.rows, section);
     }
   } catch (err) {
+    if (seq !== loadSeq) return;
     content.innerHTML = `<div class="error">Network error: ${escapeHtml(err.message)}</div>`;
   }
 }
@@ -149,7 +155,7 @@ document.getElementById('content').addEventListener('click', async (e) => {
     const modal = document.getElementById('modal');
     const planText = document.getElementById('planText');
     planText.textContent = 'Loading plan…';
-    modal.style.display = 'block';
+    modal.style.display = 'flex';
     try {
       const res = await fetch(`/api/explain/${sqlId}?${dbParam()}`);
       const data = await res.json();
@@ -198,7 +204,7 @@ function setupTabs() {
 }
 
 function setupAutoRefresh() {
-  refreshInterval = setInterval(() => loadSection(currentSection), 15000);
+  refreshInterval = setInterval(() => loadSection(currentSection), refreshSeconds * 1000);
   document.getElementById('refreshBtn').onclick = () => loadSection(currentSection);
 }
 
@@ -208,10 +214,11 @@ function dbParam() {
 
 function escapeHtml(str) {
   return String(str)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 init();

@@ -79,6 +79,7 @@ If you prefer not to grant `SELECT_CATALOG_ROLE`, you can grant only the specifi
 ```sql
 GRANT SELECT ON v_$session                 TO monitor_user;
 GRANT SELECT ON v_$sql                     TO monitor_user;
+GRANT SELECT ON v_$sqlarea                 TO monitor_user;
 GRANT SELECT ON v_$lock                    TO monitor_user;
 GRANT SELECT ON v_$system_event            TO monitor_user;
 GRANT SELECT ON v_$sysstat                 TO monitor_user;
@@ -105,7 +106,7 @@ GRANT SELECT ON v_$active_session_history  TO monitor_user;
 - Click any **SQL_ID** → execution plan modal
 - **Kill Session** button (with confirmation) on the Sessions tab
 - Simple bar charts (Chart.js) on Waits and ASH tabs
-- Auto-refresh every 15 seconds
+- Auto-refresh (every `refreshSeconds`, default 15)
 - Verbose error messages (console + UI)
 
 ## Requirements

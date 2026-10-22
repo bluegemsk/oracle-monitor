@@ -25,7 +25,7 @@ export const queries = {
       LEFT   JOIN v$sql q ON q.sql_id = s.sql_id AND q.child_number = s.sql_child_number
       WHERE  s.username IS NOT NULL
       ORDER  BY CASE WHEN s.blocking_session IS NOT NULL THEN 0 ELSE 1 END,
-               s.last_call_et DESC
+                s.last_call_et DESC
     `,
     hint: 'Sessions with high secs_active and non-Idle waits, or that are blocking others, are the usual suspects. Use Kill only when necessary.'
   },
@@ -44,11 +44,11 @@ export const queries = {
              SUBSTR(bq.sql_text, 1, 80) AS blocking_sql
       FROM   v$session w
       JOIN   v$session b ON b.sid = w.blocking_session
-      LEFT   JOIN v$sql bq ON bq.sql_id = b.sql_id
+      LEFT   JOIN v$sqlarea bq ON bq.sql_id = NVL(b.sql_id, b.prev_sql_id)
       WHERE  w.blocking_session IS NOT NULL
       ORDER  BY w.seconds_in_wait DESC
     `,
-    hint: 'A single blocker with many waiters for a long time usually means a missing COMMIT or a long-running transaction.'
+    hint: 'A single blocker with many waiters for a long time usually means a missing COMMIT or a long-running transaction. blocking_sql shows the blocker\'s current SQL, or its last SQL if it is idle.'
   },
 
   topSql: {
@@ -61,13 +61,13 @@ export const queries = {
              ROUND(buffer_gets / NULLIF(executions, 0)) AS gets_per_exec,
              disk_reads,
              SUBSTR(sql_text, 1, 120) AS sql_text
-      FROM   v$sql
+      FROM   v$sqlarea
       WHERE  executions > 0
         AND  parsing_schema_name NOT IN ('SYS','SYSTEM','PUBLIC')
       ORDER  BY elapsed_time DESC
       FETCH  FIRST 15 ROWS ONLY
     `,
-    hint: 'High elapsed_sec + high disk_reads → likely missing index or bad plan. Click SQL_ID for explain plan.'
+    hint: 'Totals since each statement was loaded into the shared pool. High elapsed_sec + high disk_reads → likely missing index or bad plan. Click SQL_ID for explain plan.'
   },
 
   waits: {
@@ -82,7 +82,7 @@ export const queries = {
       ORDER  BY time_waited_micro DESC
       FETCH  FIRST 10 ROWS ONLY
     `,
-    hint: 'The top wait class often reveals the main bottleneck (User I/O, Concurrency, Commit, Application, etc.).'
+    hint: 'Totals since instance startup. The top wait class often reveals the main bottleneck (User I/O, Concurrency, Commit, Application, etc.). Use ASH for what is happening now.'
   },
 
   resources: {
@@ -91,7 +91,7 @@ export const queries = {
       SELECT
         ROUND((1 - (phy.value / NULLIF(gets.value + cons.value, 0))) * 100, 2) AS buffer_cache_hit_pct,
         (SELECT current_utilization FROM v$resource_limit WHERE resource_name = 'sessions') AS current_sessions,
-        (SELECT value FROM v$resource_limit WHERE resource_name = 'sessions') AS max_sessions
+        (SELECT TRIM(limit_value) FROM v$resource_limit WHERE resource_name = 'sessions') AS max_sessions
       FROM v$sysstat phy, v$sysstat gets, v$sysstat cons
       WHERE phy.name = 'physical reads'
         AND gets.name = 'db block gets'
@@ -103,20 +103,22 @@ export const queries = {
   ash: {
     title: 'Recent Activity (ASH – last 30 min)',
     sql: `
-      SELECT ash.sql_id,
-             COUNT(*) AS samples,
-             ROUND(COUNT(*) / 30, 1) AS approx_aas,
-             MAX(SUBSTR(st.sql_text, 1, 100)) AS sql_text,
-             MAX(ash.event) KEEP (DENSE_RANK LAST ORDER BY ash.sample_time) AS last_event
-      FROM   v$active_session_history ash
-      LEFT   JOIN v$sql st ON ash.sql_id = st.sql_id
-      WHERE  ash.sample_time > SYSDATE - 30/1440
-        AND  ash.session_type = 'FOREGROUND'
-        AND  ash.sql_id IS NOT NULL
-      GROUP  BY ash.sql_id
-      ORDER  BY samples DESC
+      SELECT a.sql_id,
+             a.samples,
+             ROUND(a.samples / 1800, 2) AS approx_aas,
+             (SELECT SUBSTR(st.sql_text, 1, 100) FROM v$sqlarea st WHERE st.sql_id = a.sql_id) AS sql_text,
+             a.last_event
+      FROM  (SELECT sql_id,
+                    COUNT(*) AS samples,
+                    MAX(NVL(event, 'ON CPU')) KEEP (DENSE_RANK LAST ORDER BY sample_time) AS last_event
+             FROM   v$active_session_history
+             WHERE  sample_time > SYSTIMESTAMP - INTERVAL '30' MINUTE
+               AND  session_type = 'FOREGROUND'
+               AND  sql_id IS NOT NULL
+             GROUP  BY sql_id) a
+      ORDER  BY a.samples DESC
       FETCH  FIRST 12 ROWS ONLY
     `,
-    hint: 'Shows which SQL was most active in the last 30 minutes. High samples = main contributor to recent load.'
+    hint: 'Shows which SQL was most active in the last 30 minutes. ASH samples active sessions once per second, so samples = seconds of DB time and approx_aas = average active sessions running that SQL.'
   }
 };

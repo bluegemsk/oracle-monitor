@@ -190,11 +190,12 @@ app.get('/api/dbs', (req, res) => {
       loginPage: true,
       dbs: [getDbName(req)],
       current: getDbName(req),
-      privilege: db.privilege
+      privilege: db.privilege,
+      refreshSeconds: config.refreshSeconds
     });
   }
   const dbs = Object.keys(pools);
-  res.json({ loginPage: false, dbs, current: dbs[0] });
+  res.json({ loginPage: false, dbs, current: dbs[0], refreshSeconds: config.refreshSeconds });
 });
 
 // Main query endpoint
@@ -250,24 +251,27 @@ app.get('/api/explain/:sqlId', async (req, res) => {
 
 // Kill session (use carefully!)
 app.post('/api/kill', async (req, res) => {
-  const { sid, serial } = req.body;
-  if (!sid || !serial) return res.status(400).json({ error: 'sid and serial required' });
+  // ALTER SYSTEM does not accept bind variables, so the values are validated as
+  // positive integers and put into the statement text.
+  const sid = Number(req.body.sid);
+  const serial = Number(req.body.serial);
+  if (!Number.isInteger(sid) || sid <= 0 || !Number.isInteger(serial) || serial <= 0) {
+    return res.status(400).json({ error: 'sid and serial must be positive integers' });
+  }
 
   let conn;
   try {
     conn = await getConnection(req);
-    await conn.execute(
-      `ALTER SYSTEM KILL SESSION :sid_serial IMMEDIATE`,
-      { sid_serial: `${sid},${serial}` }
-    );
+    await conn.execute(`ALTER SYSTEM KILL SESSION '${sid},${serial}' IMMEDIATE`);
     console.log(`Session ${sid},${serial} killed from ${req.ip} on ${getDbName(req)}`);
     res.json({ success: true, message: `Session ${sid},${serial} killed` });
   } catch (err) {
     logError(`Kill session ${sid},${serial}`, err);
     res.status(err.status || 500).json({
       error: err.status ? err.message : 'Kill failed',
-      details: err.message,
-      hint: 'The monitoring user needs the ALTER SYSTEM privilege.'
+      details: err.errorNum === 1031
+        ? `${err.message} — the monitoring user needs the ALTER SYSTEM privilege.`
+        : err.message
     });
   } finally {
     if (conn) await conn.close().catch(() => {});
