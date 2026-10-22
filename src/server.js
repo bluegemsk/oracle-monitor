@@ -1,5 +1,4 @@
 import express from 'express';
-import session from 'express-session';
 import oracledb from 'oracledb';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,13 +14,6 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(publicDir));
-
-app.use(session({
-  secret: config.sessionSecret,
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false, maxAge: 8 * 60 * 60 * 1000 }
-}));
 
 const pools = {}; // name -> pool
 
@@ -59,67 +51,33 @@ async function initPools() {
   }
 }
 
-function requireLogin(req, res, next) {
-  if (req.session && req.session.loggedIn) return next();
-  if (req.path.startsWith('/api/')) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  res.redirect('/login');
+// The selected database travels with each request (?db=... or body.db);
+// defaults to the first database whose pool was created.
+function getDbName(req) {
+  return req.query.db || req.body?.db || Object.keys(pools)[0];
 }
 
-function getCurrentPool(req) {
-  const dbName = req.session.currentDb || config.dbs[0].name;
+function getPool(req) {
+  const dbName = getDbName(req);
   const pool = pools[dbName];
   if (!pool) throw new Error(`No pool for database "${dbName}"`);
   return pool;
 }
 
-// Login
-app.get('/login', (req, res) => {
-  if (req.session.loggedIn) return res.redirect('/');
-  res.sendFile('login.html', { root: publicDir });
-});
-
-app.post('/login', (req, res) => {
-  const { username, password } = req.body;
-  if (username === config.webUsername && password === config.webPassword) {
-    req.session.loggedIn = true;
-    req.session.username = username;
-    req.session.currentDb = config.dbs[0].name;
-    console.log(`✓ User '${username}' logged in`);
-    return res.json({ success: true });
-  }
-  console.warn(`✗ Failed login for '${username}'`);
-  res.status(401).json({ error: 'Invalid username or password' });
-});
-
-app.post('/logout', (req, res) => {
-  req.session.destroy(() => res.json({ success: true }));
-});
-
-// Database list & switch
-app.get('/api/dbs', requireLogin, (req, res) => {
-  res.json({
-    dbs: config.dbs.map(d => d.name),
-    current: req.session.currentDb || config.dbs[0].name
-  });
-});
-
-app.post('/api/switch-db', requireLogin, (req, res) => {
-  const { name } = req.body;
-  if (!pools[name]) return res.status(400).json({ error: 'Unknown database' });
-  req.session.currentDb = name;
-  res.json({ success: true, current: name });
+// Database list
+app.get('/api/dbs', (req, res) => {
+  const dbs = Object.keys(pools);
+  res.json({ dbs, current: dbs[0] });
 });
 
 // Main query endpoint
-app.get('/api/:section', requireLogin, async (req, res) => {
+app.get('/api/:section', async (req, res) => {
   const section = queries[req.params.section];
   if (!section) return res.status(404).json({ error: 'Unknown section' });
 
   let conn;
   try {
-    const pool = getCurrentPool(req);
+    const pool = getPool(req);
     conn = await pool.getConnection();
     const result = await conn.execute(section.sql);
     res.json({
@@ -127,7 +85,7 @@ app.get('/api/:section', requireLogin, async (req, res) => {
       rows: result.rows,
       hint: section.hint,
       fetchedAt: new Date().toISOString(),
-      db: req.session.currentDb
+      db: getDbName(req)
     });
   } catch (err) {
     logError(`Query ${req.params.section}`, err);
@@ -142,14 +100,14 @@ app.get('/api/:section', requireLogin, async (req, res) => {
 });
 
 // Explain plan
-app.get('/api/explain/:sqlId', requireLogin, async (req, res) => {
+app.get('/api/explain/:sqlId', async (req, res) => {
   const { sqlId } = req.params;
   if (!/^[a-z0-9]{13}$/i.test(sqlId)) {
     return res.status(400).json({ error: 'Invalid SQL ID' });
   }
   let conn;
   try {
-    const pool = getCurrentPool(req);
+    const pool = getPool(req);
     conn = await pool.getConnection();
     const result = await conn.execute(
       `SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(:sqlId, NULL, 'TYPICAL'))`,
@@ -166,19 +124,19 @@ app.get('/api/explain/:sqlId', requireLogin, async (req, res) => {
 });
 
 // Kill session (use carefully!)
-app.post('/api/kill', requireLogin, async (req, res) => {
+app.post('/api/kill', async (req, res) => {
   const { sid, serial } = req.body;
   if (!sid || !serial) return res.status(400).json({ error: 'sid and serial required' });
 
   let conn;
   try {
-    const pool = getCurrentPool(req);
+    const pool = getPool(req);
     conn = await pool.getConnection();
     await conn.execute(
       `ALTER SYSTEM KILL SESSION :sid_serial IMMEDIATE`,
       { sid_serial: `${sid},${serial}` }
     );
-    console.log(`Session ${sid},${serial} killed by ${req.session.username} on ${req.session.currentDb}`);
+    console.log(`Session ${sid},${serial} killed from ${req.ip} on ${getDbName(req)}`);
     res.json({ success: true, message: `Session ${sid},${serial} killed` });
   } catch (err) {
     logError(`Kill session ${sid},${serial}`, err);
@@ -196,7 +154,6 @@ app.post('/api/kill', requireLogin, async (req, res) => {
 initPools().then(() => {
   app.listen(config.port, () => {
     console.log(`\n🚀 Oracle Monitor running at http://localhost:${config.port}`);
-    console.log(`   Databases: ${Object.keys(pools).join(', ')}`);
-    console.log(`   Login: ${config.webUsername} / ${config.webPassword}\n`);
+    console.log(`   Databases: ${Object.keys(pools).join(', ')}\n`);
   });
 });

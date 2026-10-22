@@ -13,7 +13,6 @@ Uses **node-oracledb in Thin mode** (no Oracle Client libraries required).
    cp src/config.example.js src/config.js
    ```
 
-   - Change web login (`webUsername` / `webPassword`).
    - Add one or more databases under `dbs[]`.
 
    `src/config.js` is git-ignored so your credentials never get committed.
@@ -27,7 +26,7 @@ npm install
 npm start        # or: npm run dev (auto-restart on changes)
 ```
 
-4. Open http://localhost:3000 and log in.
+4. Open http://localhost:3000.
 
 ## Project structure
 
@@ -38,7 +37,7 @@ oracle-monitor/
 │   ├── queries.js           # Monitoring SQL (sessions, locks, top SQL, waits, ASH…)
 │   ├── config.example.js    # Config template (committed)
 │   └── config.js            # Your local config (git-ignored)
-├── public/                  # Static frontend (dashboard + login page)
+├── public/                  # Static frontend (dashboard)
 ├── docs/
 │   └── Oracle_Bottleneck_Investigation_Guide.md
 ├── package.json
@@ -87,7 +86,7 @@ GRANT SELECT ON v_$active_session_history  TO monitor_user;
 
 ## Features
 
-- Web login with session protection
+- No login — open internal tool for the admin team
 - **Multi-database** support (dropdown switcher)
 - Overview / Sessions / Locks / Top SQL / Waits / Resources / **ASH (30 min)**
 - Color highlighting for long waits and blockers
@@ -105,10 +104,12 @@ GRANT SELECT ON v_$active_session_history  TO monitor_user;
 
 ## Security notes
 
-- Change default passwords and `sessionSecret` before real use.
+- The app has **no login**: anyone who can reach the port can view the dashboards
+  and use the Kill Session button. Run it only on a trusted internal network
+  (or bind it behind a firewall / VPN).
+- Change the default database passwords in `src/config.js` before real use.
 - Give the monitoring database user the minimum privileges needed.
 - The Kill feature is powerful — use it carefully and only with trusted users.
-- In production, put the app behind TLS and stronger authentication.
 
 ## Tips for junior DBAs
 

@@ -17,12 +17,7 @@ async function loadDbs() {
   select.innerHTML = data.dbs.map(d => `<option value="${d}">${d}</option>`).join('');
   select.value = data.current;
   currentDb = data.current;
-  select.onchange = async () => {
-    await fetch('/api/switch-db', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: select.value })
-    });
+  select.onchange = () => {
     currentDb = select.value;
     loadSection(currentSection);
   };
@@ -38,8 +33,7 @@ async function loadSection(section) {
   if (chart) { chart.destroy(); chart = null; }
 
   try {
-    const res = await fetch(`/api/${section}`);
-    if (res.status === 401) { window.location.href = '/login'; return; }
+    const res = await fetch(`/api/${section}?${dbParam()}`);
     const data = await res.json();
     if (!res.ok) {
       content.innerHTML = `<div class="error"><strong>Error:</strong> ${escapeHtml(data.error)}<br><small>${escapeHtml(data.details || '')}</small></div>`;
@@ -90,7 +84,7 @@ function renderTable(rows, section) {
     });
 
     if (section === 'sessions') {
-      html += `<td><button class="kill-btn small" data-sid="${row.SID}" data-serial="${row.SERIAL#}">Kill</button></td>`;
+      html += `<td><button class="kill-btn small" data-sid="${row.SID}" data-serial="${row['SERIAL#']}">Kill</button></td>`;
     }
     html += '</tr>';
   });
@@ -138,7 +132,7 @@ document.getElementById('content').addEventListener('click', async (e) => {
     planText.textContent = 'Loading plan…';
     modal.style.display = 'block';
     try {
-      const res = await fetch(`/api/explain/${sqlId}`);
+      const res = await fetch(`/api/explain/${sqlId}?${dbParam()}`);
       const data = await res.json();
       planText.textContent = data.plan || data.error || 'No plan available';
     } catch (err) {
@@ -154,7 +148,7 @@ document.getElementById('content').addEventListener('click', async (e) => {
       const res = await fetch('/api/kill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sid, serial })
+        body: JSON.stringify({ sid, serial, db: currentDb })
       });
       const data = await res.json();
       if (res.ok) {
@@ -189,10 +183,9 @@ function setupAutoRefresh() {
   document.getElementById('refreshBtn').onclick = () => loadSection(currentSection);
 }
 
-document.getElementById('logoutBtn').onclick = async () => {
-  await fetch('/logout', { method: 'POST' });
-  window.location.href = '/login';
-};
+function dbParam() {
+  return `db=${encodeURIComponent(currentDb)}`;
+}
 
 function escapeHtml(str) {
   return String(str)
