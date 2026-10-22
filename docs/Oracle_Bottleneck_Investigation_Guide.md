@@ -3,7 +3,7 @@
 *(Terminal / SQL*Plus / SQLcl version)*
 
 This guide contains the same queries used by the Oracle Bottleneck Monitor web application.  
-You can run them directly when you only have a remote PL/SQL terminal.
+Use it when you only have a terminal (SQL\*Plus or SQLcl) and cannot use the web app.
 
 **Required privileges:** `SELECT_CATALOG_ROLE` (or the individual `SELECT` grants on the `V_$` views — see the README).
 
@@ -16,11 +16,19 @@ You can run them directly when you only have a remote PL/SQL terminal.
 3. Follow the hints. If something looks bad, jump to the recommended next query.
 4. For any interesting `SQL_ID`, run the Explain Plan query at the bottom.
 
+> **RAC:** `V$` views show only the instance you are connected to.
+> On a RAC database, connect to each instance, or ask a senior DBA.
+
 Set a reasonable line size so output is readable:
 ```sql
 SET LINESIZE 200
 SET PAGESIZE 100
-COLUMN sql_text FORMAT A100
+COLUMN sql_text      FORMAT A100
+COLUMN blocking_sql  FORMAT A80
+COLUMN event         FORMAT A40
+COLUMN last_event    FORMAT A40
+COLUMN machine       FORMAT A30
+COLUMN program       FORMAT A30
 ```
 
 ---
@@ -94,7 +102,7 @@ ORDER  BY w.seconds_in_wait DESC;
 **What to look for / Hint:**  
 A single blocker with many waiters for a long time almost always means a missing `COMMIT` or a long-running transaction that should have finished.  
 `blocking_sql` shows the blocker's current SQL, or — if the blocker is idle — the last SQL it ran (often the uncommitted DML).  
-Contact the owner of the blocking session or (with care) kill it.
+Contact the owner of the blocking session or (with care) kill it. See **Ending a blocking session** below.
 
 ---
 
@@ -174,6 +182,9 @@ A buffer cache hit ratio consistently below 90–95 % often means memory pressur
 
 **Purpose:** See which SQL was most active in the recent past (very useful after a short performance degradation).
 
+> **License note:** `V$ACTIVE_SESSION_HISTORY` requires the **Oracle Diagnostics Pack**
+> (Enterprise Edition). Skip this step if your database is not licensed for it.
+
 ```sql
 SELECT a.sql_id,
        a.samples,
@@ -210,6 +221,30 @@ SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR('your_sql_id_here', NULL, 'TYPICAL
 
 **Hint:** Look for full table scans on large tables, high cost steps, or missing index operations.  
 If the plan is gone (“SQL not found”), the statement has aged out of the shared pool.
+
+---
+
+## Ending a blocking session
+
+Only do this when the blocker is clearly the problem and, if possible, after you have talked to its owner.
+
+1. Note `blocking_sid` and `blocking_serial` from **Step 3**.
+2. Check who it is:
+
+   ```sql
+   SELECT sid, serial#, username, machine, program, status, last_call_et
+   FROM   v$session
+   WHERE  sid = &blocking_sid;
+   ```
+
+3. Kill it. You need the `ALTER SYSTEM` privilege:
+
+   ```sql
+   ALTER SYSTEM KILL SESSION '<sid>,<serial#>' IMMEDIATE;
+   ```
+
+**Remember:** killing a session rolls back its uncommitted work. A big transaction
+can take a long time to roll back, and the locks stay until the rollback finishes.
 
 ---
 
