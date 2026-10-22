@@ -1,0 +1,21 @@
+{
+  "name": "oracle-monitor",
+  "version": "1.0.0",
+  "description": "Thin-mode Node.js Oracle Database bottleneck monitor for junior DBAs",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": ["oracle", "database", "monitoring", "dba", "oracledb", "ash"],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "oracledb": "^6.8.0",
+    "express-session": "^1.18.1",
+    "body-parser": "^1.20.3"
+  }
+}

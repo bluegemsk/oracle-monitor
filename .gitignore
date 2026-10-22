@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Local configuration (contains credentials) - see src/config.example.js
+src/config.js
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
