@@ -100,6 +100,7 @@ function renderTable(rows, section) {
       if ((c === 'SECS_ACTIVE' || c === 'SECONDS_IN_WAIT') && num > 300) cls = 'bad';
       else if ((c === 'SECS_ACTIVE' || c === 'SECONDS_IN_WAIT') && num > 60) cls = 'warn';
       if (c === 'BLOCKING_SESSION' && val) cls = 'bad';
+      if (c === 'STATUS' && section === 'memory') cls = val === 'BAD' ? 'bad' : val === 'WARN' ? 'warn' : '';
 
       let cell = escapeHtml(val);
       if ((c === 'SQL_ID' || c === 'sql_id') && val && /^[a-z0-9]{13}$/i.test(val)) {

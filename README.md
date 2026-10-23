@@ -24,12 +24,13 @@ It uses the same queries.
 | **Top SQL**   | Statements with the most elapsed time             | The database is slow in general              |
 | **Waits**     | Top wait events since instance startup            | You want the *type* of bottleneck (I/O, locks…) |
 | **Resources** | Buffer cache hit ratio, sessions used vs. limit   | Suspected memory or session-limit problems   |
+| **Memory**    | SGA, buffer cache, shared pool, PGA with status and advice per row | Suspected memory pressure, ORA-04031, slow sorts |
 | **ASH (30 min)** | SQL that was most active in the last 30 minutes | A problem happened a few minutes ago        |
 
 On every tab:
 
 - The **blue hint box** under the table explains how to read the result.
-- **Red / orange cells** mark long waits (> 5 min / > 1 min) and blocked sessions.
+- **Red / orange cells** mark long waits (> 5 min / > 1 min), blocked sessions, and BAD / WARN rows on the Memory tab.
 - Click any **SQL_ID** to see its execution plan.
 - The **Kill** button (Sessions tab) ends a session after a confirmation.
 - Data refreshes automatically every 15 seconds by default. Untick **Auto-refresh** for manual mode, or set the period in **Loop (sec.)** (whole seconds, minimum 5). **Refresh** reloads the current tab at any time, in either mode.
@@ -155,7 +156,10 @@ Errors are shown on the page and printed in detail in the terminal where you ran
    to see the execution plan.
 5. **Waits** tells you the *kind* of problem: `User I/O` = disk, `Concurrency` =
    locks/latches, `Commit` = redo writes.
-6. **Before you kill a session**, find out whose it is (`USERNAME`, `MACHINE`,
+6. Memory doubts → open **Memory** and read the `STATUS` / `ADVICE` columns.
+   Fix BAD rows first (PGA over allocation, multipass sorts), and don't tune
+   for the buffer cache hit ratio alone.
+7. **Before you kill a session**, find out whose it is (`USERNAME`, `MACHINE`,
    `PROGRAM`) and, if possible, ask the owner first. Killing a session rolls back its
    uncommitted work, and the rollback can take as long as the work did.
 
