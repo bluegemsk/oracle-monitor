@@ -32,7 +32,7 @@ On every tab:
 - **Red / orange cells** mark long waits (> 5 min / > 1 min) and blocked sessions.
 - Click any **SQL_ID** to see its execution plan.
 - The **Kill** button (Sessions tab) ends a session after a confirmation.
-- Data refreshes automatically every 15 seconds (configurable), or press **Refresh**.
+- Data refreshes automatically every 15 seconds by default. Untick **Auto-refresh** for manual mode, or set the period in **Loop (sec.)** (whole seconds, minimum 5). **Refresh** reloads the current tab at any time, in either mode.
 
 ---
 
@@ -90,7 +90,7 @@ Edit `src/config.js`. It is git-ignored, so passwords in it are never committed.
 | `sessionIdleMinutes` | `30`     | Login page mode: forget the credentials after this many idle minutes. |
 | `dbs`                | example  | List of databases (`name`, `user`, `password`, `connectString`). Used only when `databaseLoginPage` is `'no'`. |
 | `port`               | `3000`   | Web port. |
-| `refreshSeconds`     | `15`     | Auto-refresh interval. |
+| `refreshSeconds`     | `15`     | Default auto-refresh interval (initial **Loop (sec.)** value; can be changed in the UI). |
 
 The connection string uses the Easy Connect format: `host:port/service_name`,
 e.g. `dbhost:1521/ORCLPDB1`.
