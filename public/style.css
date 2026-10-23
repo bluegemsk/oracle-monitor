@@ -46,3 +46,5 @@ tr:hover { background: #f7fafc; }
 #disconnectBtn { background: #c53030; }
 #disconnectBtn:hover { background: #9b2c2c; }
 .form-group select { background: white; color: #222; border: 1px solid #cbd5e0; border-radius: 4px; cursor: pointer; }
+.refresh-ctl { display: flex; align-items: center; gap: 0.3rem; font-size: 0.9rem; cursor: pointer; }
+.refresh-ctl input[type=number] { width: 4rem; padding: 0.3rem; border: none; border-radius: 4px; }

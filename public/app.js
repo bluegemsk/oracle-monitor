@@ -203,9 +203,32 @@ function setupTabs() {
   });
 }
 
+const MIN_REFRESH_SECONDS = 5;
+
 function setupAutoRefresh() {
-  refreshInterval = setInterval(() => loadSection(currentSection), refreshSeconds * 1000);
+  const toggle = document.getElementById('autoRefresh');
+  const loop = document.getElementById('refreshLoop');
+  loop.min = MIN_REFRESH_SECONDS;
+  loop.value = Math.max(MIN_REFRESH_SECONDS, Math.round(refreshSeconds) || 15);
+  toggle.checked = refreshSeconds > 0;
   document.getElementById('refreshBtn').onclick = () => loadSection(currentSection);
+  toggle.onchange = restartAutoRefresh;
+  loop.onchange = () => {
+    const v = parseInt(loop.value, 10);
+    loop.value = Number.isInteger(v) && v >= MIN_REFRESH_SECONDS ? v : MIN_REFRESH_SECONDS;
+    restartAutoRefresh();
+  };
+  restartAutoRefresh();
+}
+
+// Always clears the previous timer first, so there is never more than one running.
+function restartAutoRefresh() {
+  clearInterval(refreshInterval);
+  refreshInterval = null;
+  const loop = document.getElementById('refreshLoop');
+  loop.disabled = !document.getElementById('autoRefresh').checked;
+  if (loop.disabled) return;
+  refreshInterval = setInterval(() => loadSection(currentSection), parseInt(loop.value, 10) * 1000);
 }
 
 function dbParam() {
